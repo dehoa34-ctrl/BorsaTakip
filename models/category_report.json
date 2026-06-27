@@ -1,0 +1,101 @@
+[
+  {
+    "category": "Bağımsız Denetim",
+    "n": 1073,
+    "auc_dir": 0.45407713044011677,
+    "auc_impact": 0.5167482427291773,
+    "best": "impact",
+    "best_auc": 0.5167482427291773,
+    "kept": false
+  },
+  {
+    "category": "Finansal Tablo / Bilanço",
+    "n": 4020,
+    "auc_dir": 0.4840623173188658,
+    "auc_impact": 0.5514816525228021,
+    "best": "impact",
+    "best_auc": 0.5514816525228021,
+    "kept": true
+  },
+  {
+    "category": "Genel Kurul",
+    "n": 1598,
+    "auc_dir": 0.45647736082264123,
+    "auc_impact": 0.5356889321211544,
+    "best": "impact",
+    "best_auc": 0.5356889321211544,
+    "kept": false
+  },
+  {
+    "category": "Kredi / Tahvil / Bono",
+    "n": 750,
+    "auc_dir": 0.4602001725166999,
+    "auc_impact": 0.5848645929056646,
+    "best": "impact",
+    "best_auc": 0.5848645929056646,
+    "kept": true
+  },
+  {
+    "category": "Pay Geri Alım",
+    "n": 1313,
+    "auc_dir": 0.47703040922652495,
+    "auc_impact": 0.525176022297527,
+    "best": "impact",
+    "best_auc": 0.525176022297527,
+    "kept": false
+  },
+  {
+    "category": "Sermaye Artırımı",
+    "n": 986,
+    "auc_dir": 0.45780209950001494,
+    "auc_impact": 0.5373742921798494,
+    "best": "impact",
+    "best_auc": 0.5373742921798494,
+    "kept": false
+  },
+  {
+    "category": "Sermaye Piyasası Aracı İşlemi",
+    "n": 1402,
+    "auc_dir": 0.5152189773091091,
+    "auc_impact": 0.536640907410101,
+    "best": "impact",
+    "best_auc": 0.536640907410101,
+    "kept": false
+  },
+  {
+    "category": "Temettü / Kâr Payı",
+    "n": 972,
+    "auc_dir": 0.4475643240891151,
+    "auc_impact": 0.45471293007055835,
+    "best": "impact",
+    "best_auc": 0.45471293007055835,
+    "kept": false
+  },
+  {
+    "category": "Yatırım / Kapasite / Tesis",
+    "n": 391,
+    "auc_dir": 0.5099649851572928,
+    "auc_impact": 0.5548051417536712,
+    "best": "impact",
+    "best_auc": 0.5548051417536712,
+    "kept": true
+  },
+  {
+    "category": "Özel Durum Açıklaması",
+    "n": 6353,
+    "auc_dir": 0.5042922428405345,
+    "auc_impact": 0.5708396000992193,
+    "best": "impact",
+    "best_auc": 0.5708396000992193,
+    "kept": true
+  },
+  {
+    "category": "İhale / Sözleşme / Sipariş",
+    "n": 1269,
+    "auc_dir": 0.5443763054180216,
+    "auc_impact": 0.5585723393167132,
+    "best": "impact",
+    "best_auc": 0.5585723393167132,
+    "kept": true
+  }
+]

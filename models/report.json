@@ -1,0 +1,58 @@
+{
+  "best_family": "Gradient Boosting",
+  "tuned_cv_auc": 0.6448176353136864,
+  "holdout_auc": 0.6345285320683096,
+  "holdout_acc": 0.7524033745340396,
+  "holdout_brier": 0.17773373923222321,
+  "best_params": {
+    "clf__learning_rate": 0.03,
+    "clf__max_depth": 2,
+    "clf__n_estimators": 300,
+    "clf__subsample": 0.8
+  },
+  "families": [
+    {
+      "name": "Lojistik Regresyon",
+      "cv_auc": 0.5852996955885861,
+      "folds": [
+        0.5886414026489293,
+        0.5885592994638532,
+        0.5844572402610901,
+        0.5694437443555331,
+        0.5953967912135243
+      ]
+    },
+    {
+      "name": "Gradient Boosting",
+      "cv_auc": 0.6351358044937263,
+      "folds": [
+        0.5959249858996052,
+        0.6976237373115454,
+        0.6311608739034632,
+        0.6059293155230714,
+        0.6450401098309465
+      ]
+    },
+    {
+      "name": "Random Forest",
+      "cv_auc": 0.6183591039980463,
+      "folds": [
+        0.5941760507225237,
+        0.6792809985469455,
+        0.6158597680123062,
+        0.5904511372944363,
+        0.6120275654140196
+      ]
+    }
+  ],
+  "n": 20388,
+  "base_rate": 0.7816362566215421,
+  "trained_on": "2026-06-22",
+  "horizon": 3,
+  "target_desc": "3 işlem gününde |getiri| > %7 (büyük hareket / olay etkisi)",
+  "best": {
+    "name": "Gradient Boosting",
+    "auc": 0.6345285320683096,
+    "cv_auc": 0.6448176353136864
+  }
+}

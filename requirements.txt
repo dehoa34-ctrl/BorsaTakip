@@ -1,0 +1,29 @@
+# BorsaTakip Trading Bot — Gerekli Kütüphaneler
+
+# Web Framework
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+
+# Veri Analizi
+pandas>=2.0.0
+numpy>=1.24.0
+yfinance>=0.2.40
+feedparser>=6.0.11
+
+# Binance API
+python-binance>=1.0.19
+
+# Telegram Bot
+aiohttp>=3.9.0
+
+# HTTP & Async
+httpx>=0.27.0
+
+# Makine Öğrenmesi (KAP olay-etkisi + swing güven skoru modelleri)
+scikit-learn>=1.4.0
+joblib>=1.3.0
+lightgbm>=4.0.0
+xgboost>=2.0.0
+
+# Diğer
+python-dotenv>=1.0.0

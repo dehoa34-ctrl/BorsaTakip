@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BorsaTakip AI - BIST & ABD Hisse Analizi (Yapay Zeka)</title>
+    <meta name="description" content="Binance API entegrasyonlu, Scalping & Hammer stratejileri ile otomatik alım-satım botu. Gerçek zamanlı analiz, risk yönetimi ve Telegram bildirimleri.">
+    <!-- Google Fonts: Inter & Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    <!-- styles -->
+    <link rel="stylesheet" href="css/styles.css">
+    <!-- lightweight charts library -->
+    <script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i data-lucide="trending-up" class="logo-icon"></i>
+                <span class="logo-text">BORSA<span>AI</span></span>
+            </div>
+            
+            <nav class="nav-menu">
+                <div class="nav-item active" id="btn-dashboard" onclick="showPage('dashboard')">
+                    <i data-lucide="layout-dashboard"></i>
+                    <span>Analiz Paneli</span>
+                </div>
+                <div class="nav-item" id="btn-technical" onclick="showPage('technical')">
+                    <i data-lucide="gauge-circle"></i>
+                    <span>Teknik Analiz</span>
+                </div>
+                <div class="nav-item" id="btn-candles" onclick="showPage('candles')">
+                    <i data-lucide="candlestick-chart"></i>
+                    <span>Mum Formasyonları</span>
+                </div>
+                <div class="nav-item" id="btn-newsintel" onclick="showPage('newsintel')">
+                    <i data-lucide="brain-circuit"></i>
+                    <span>Haber Zekâsı</span>
+                </div>
+                <div class="nav-item" id="btn-scan" onclick="showPage('scan')">
+                    <i data-lucide="scan-search"></i>
+                    <span>Formasyon Tarama</span>
+                </div>
+                <div class="nav-item" id="btn-watchlist">
+                    <i data-lucide="list"></i>
+                    <span>İzleme Listesi</span>
+                </div>
+                <div class="nav-item" id="btn-news">
+                    <i data-lucide="newspaper"></i>
+                    <span>Haberler</span>
+                </div>
+            </nav>
+
+            <div class="watchlist-section">
+                <div class="section-group">
+                    <h3>🇹🇷 TÜRK HİSSELERİ (BIST)</h3>
+                    <div class="watchlist-items" id="watchlist-bist">
+                        <div class="loading-small">Yükleniyor...</div>
+                    </div>
+                </div>
+
+                <div class="section-group" style="margin-top: 2rem;">
+                    <h3>🇺🇸 ABD HİSSELERİ</h3>
+                    <div class="watchlist-items" id="watchlist-us">
+                        <!-- Dynamic US -->
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-nav">
+                <div class="search-bar">
+                    <i data-lucide="search"></i>
+                    <input type="text" id="symbol-search" placeholder="Sembol Ara (ÖR: THYAO.IS, AKBNK.IS, AAPL, NVDA)..." autocomplete="off">
+                    <button class="search-btn" id="search-btn">ARA</button>
+                </div>
+                <div class="user-profile">
+                    <div class="status-indicator online"></div>
+                    <span class="status-text">Analiz Motoru Aktif</span>
+                </div>
+            </header>
+
+            <!-- Analiz Paneli -->
+            <section class="dashboard" id="section-dashboard">
+                <!-- Symbol Header Info -->
+                <div class="ticker-header glass-card" id="ticker-header" style="display: none;">
+                    <div class="ticker-main">
+                        <h1 id="selected-symbol">---</h1>
+                        <div class="price-container">
+                            <span class="current-price" id="current-price">0.00</span>
+                            <span class="price-change positive" id="price-change">+0.00%</span>
+                        </div>
+                    </div>
+                    <div class="signal-badge" id="signal-badge">
+                        <span id="signal-text">ANALİZ</span>
+                        <small id="signal-message">Veri Alınamıyor</small>
+                    </div>
+                </div>
+
+                <!-- Chart & Stats Grid -->
+                <div class="grid-layout">
+                    <div class="chart-container glass-card">
+                        <div class="chart-header">
+                            <h3>Teknik Grafik (OHLC)</h3>
+                            <div class="chart-controls">
+                                <span>1G</span>
+                                <span>1A</span>
+                                <span>6A</span>
+                                <span class="active">1Y</span>
+                                <span>5Y</span>
+                                <span>TÜM</span>
+                            </div>
+                        </div>
+                        <div id="main-chart" class="chart-box">
+                            <!-- TradingView Chart Injection point -->
+                            <div class="chart-placeholder">Lütfen bir sembol aratın...</div>
+                        </div>
+                    </div>
+
+                    <div class="stats-panel">
+                        <div class="stat-card glass-card">
+                            <div class="stat-icon rsi-icon"><i data-lucide="gauge"></i></div>
+                            <div class="stat-info">
+                                <span>RSI (14)</span>
+                                <h2 id="stat-rsi">--</h2>
+                            </div>
+                        </div>
+                        <div class="stat-card glass-card">
+                            <div class="stat-icon sma-icon"><i data-lucide="activity"></i></div>
+                            <div class="stat-info">
+                                <span>SMA 50</span>
+                                <h2 id="stat-sma">-- / --</h2>
+                            </div>
+                        </div>
+                        <div class="stat-card glass-card prediction">
+                            <h3>Yapay Zeka Görüşü</h3>
+                            <p id="ai-insight">Sembol seçildiğinde analiz burada görüntülenecektir.</p>
+                            <div class="ai-confidence">
+                                <span>Güven Oranı</span>
+                                <div class="progress-bar"><div class="progress" style="width: 85%;"></div></div>
+                            </div>
+                        </div>
+                        <div class="stat-card glass-card fundamental-card" id="fundamental-card" style="display:none;">
+                            <h3>📊 Temel Analiz + Birleşik Görüş</h3>
+                            <div id="final-verdict"></div>
+                            <div id="fundamental-ratios"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 📊 Teknik Analiz (Konsensüs + Olasılık) -->
+            <section class="technical-section" id="section-technical" style="display:none;">
+                <div class="tech-toolbar glass-card">
+                    <div class="tech-symbol-info">
+                        <h1 id="tech-symbol">---</h1>
+                        <div class="price-container">
+                            <span class="current-price" id="tech-price">0.00</span>
+                            <span class="price-change positive" id="tech-change">+0.00%</span>
+                        </div>
+                    </div>
+                    <div class="tech-timeframes" id="tech-timeframes">
+                        <button data-period="1d" data-interval="5m">5dk</button>
+                        <button data-period="5d" data-interval="15m">15dk</button>
+                        <button data-period="1mo" data-interval="60m">Saatlik</button>
+                        <button class="active" data-period="6mo" data-interval="1d">Günlük</button>
+                        <button data-period="2y" data-interval="1wk">Haftalık</button>
+                        <button data-period="5y" data-interval="1mo">Aylık</button>
+                    </div>
+                </div>
+
+                <div id="tech-content">
+                    <div class="tech-empty glass-card">Yukarıdan bir sembol aratın, konsensüs analizi burada görünecek.</div>
+                </div>
+                <div id="flow-section"></div>
+            </section>
+
+            <!-- 🕯️ Mum Formasyonları -->
+            <section class="candles-section" id="section-candles" style="display:none;">
+                <div class="tech-toolbar glass-card">
+                    <div class="tech-symbol-info">
+                        <h1 id="cnd-symbol">---</h1>
+                        <div class="price-container">
+                            <span class="current-price" id="cnd-price">0.00</span>
+                            <span class="cnd-bias" id="cnd-bias">--</span>
+                        </div>
+                    </div>
+                    <div class="tech-timeframes" id="cnd-timeframes">
+                        <button data-period="5d" data-interval="15m">15dk</button>
+                        <button data-period="1mo" data-interval="60m">Saatlik</button>
+                        <button class="active" data-period="3mo" data-interval="1d">Günlük</button>
+                        <button data-period="2y" data-interval="1wk">Haftalık</button>
+                    </div>
+                </div>
+                <div id="cnd-content">
+                    <div class="tech-empty glass-card">Yukarıdan bir sembol aratın, mum formasyonları burada listelenecek.</div>
+                </div>
+            </section>
+
+            <!-- 🧠 Haber Zekâsı + Tarama -->
+            <section class="newsintel-section" id="section-newsintel" style="display:none;">
+                <div class="ni-tabs">
+                    <button class="ni-tab active" data-nitab="symbol">🔎 Hisse Haber Zekâsı</button>
+                    <button class="ni-tab" data-nitab="scanner">📡 BIST Tarama (Scalp)</button>
+                </div>
+                <div id="ni-symbol-view">
+                    <div class="tech-empty glass-card">Yukarıdan bir sembol aratın; haberleri kategorize edip "aynı tip haber geçmişte ne yaptı" analizini göstereyim.</div>
+                </div>
+                <div id="ni-scanner-view" style="display:none;">
+                    <div class="tech-empty glass-card">Tarama yükleniyor...</div>
+                </div>
+            </section>
+
+            <!-- 🔎 Formasyon Tarama + İdealgo Dışa Aktarma -->
+            <section class="scan-section" id="section-scan" style="display:none;">
+                <div class="scan-toolbar glass-card">
+                    <div class="scan-field">
+                        <label>Kriter Türü</label>
+                        <select id="scan-ctype">
+                            <option value="teknik">Teknik Konsensüs</option>
+                            <option value="mum">Mum Formasyonu</option>
+                            <option value="rsi">RSI</option>
+                            <option value="olasilik">Yükseliş Olasılığı ≥</option>
+                        </select>
+                    </div>
+                    <div class="scan-field">
+                        <label>Değer</label>
+                        <select id="scan-cval"></select>
+                    </div>
+                    <div class="scan-field">
+                        <label>Kaç hisse? (0 = tümü ~550)</label>
+                        <input type="number" id="scan-limit" value="60" min="0" max="600">
+                    </div>
+                    <button class="search-btn" id="scan-run">TARA</button>
+                    <button class="search-btn scan-export-btn" id="scan-export" disabled>⬇ İdealgo TXT</button>
+                </div>
+                <div id="scan-content">
+                    <div class="tech-empty glass-card">Kriter seçip <b>TARA</b>'ya bas. Eşleşen hisseleri İdealgo'ya geri yüklenebilir TXT (IMKBH'…) olarak indirebilirsin.</div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- News Modal -->
+    <div id="news-modal" class="modal">
+        <div class="modal-content glass-card">
+            <span class="close-modal">&times;</span>
+            <h2>Gündem Haberleri</h2>
+            <div id="news-container"></div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script src="js/technical.js"></script>
+    <script src="js/candles.js"></script>
+    <script src="js/newsintel.js"></script>
+    <script src="js/scan.js"></script>
+    <script>
+        // Init Lucide icons
+        lucide.createIcons();
+    </script>
+</body>
+</html>
