@@ -27,8 +27,8 @@ def get_fundamentals(symbol):
         return _CACHE[sym][1]
 
     try:
-        import yfinance as yf
-        info = yf.Ticker(sym).info or {}
+        import data_fetcher
+        info = data_fetcher.Ticker(sym).info or {}
     except Exception:
         info = {}
 
@@ -41,6 +41,10 @@ def get_fundamentals(symbol):
     if growth is None:
         growth = info.get("revenueGrowth")
 
+    float_shares = info.get("floatShares")
+    shares_outstanding = info.get("sharesOutstanding")
+    fdo = round((float_shares / shares_outstanding) * 100, 2) if (float_shares and shares_outstanding) else None
+
     f = {
         "favok_growth": _pct(growth),                 # Çeyreklik kâr/ciro büyümesi (FAVÖK proxy)
         "net_debt_ebitda": net_debt_ebitda,           # Net Borç / FAVÖK
@@ -48,6 +52,7 @@ def get_fundamentals(symbol):
         "pe": round(info["trailingPE"], 2) if info.get("trailingPE") else None,    # F/K
         "pb": round(info["priceToBook"], 2) if info.get("priceToBook") else None,  # PD/DD
         "fx_position_equity": None,                   # Net YP Pozisyonu/Özsermaye (yfinance vermiyor)
+        "fdo": fdo,                                   # Fiili Dolaşım Oranı (FDO)
         "name": info.get("shortName") or sym,
     }
     f["quality"] = _quality(f)

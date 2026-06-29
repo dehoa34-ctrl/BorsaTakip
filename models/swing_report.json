@@ -23,13 +23,17 @@
     "pit_roe",
     "pit_nde",
     "pit_rev_growth",
-    "pit_earn_growth"
+    "pit_earn_growth",
+    "pit_low_debt",
+    "pit_real_growth",
+    "pit_profitable",
+    "pit_quality"
   ],
   "subset": "all",
   "auc": 0.582677335261794,
   "auc_price_only": 0.582976777056798,
   "volume_gain": -0.00029944179500396295,
-  "fund_gain": -2.539025107983761e-05,
+  "fund_gain": -0.0007573196889489875,
   "horizon": 5,
   "n": 518734,
   "pos_rate": 0.34689262704970175,
@@ -138,8 +142,8 @@
       "target": "y_big_fund",
       "model": "LightGBM",
       "auc_price": 0.6067461723078117,
-      "auc_full": 0.604296041440088,
-      "gain": -0.002450130867723721,
+      "auc_full": 0.6057872678603482,
+      "gain": -0.0009589044474634933,
       "subset": "pit",
       "features": [
         "rsi14",
@@ -163,15 +167,19 @@
         "pit_roe",
         "pit_nde",
         "pit_rev_growth",
-        "pit_earn_growth"
+        "pit_earn_growth",
+        "pit_low_debt",
+        "pit_real_growth",
+        "pit_profitable",
+        "pit_quality"
       ]
     },
     {
       "target": "y_big_fund",
       "model": "XGBoost",
       "auc_price": 0.609434425386292,
-      "auc_full": 0.6094090351352122,
-      "gain": -2.539025107983761e-05,
+      "auc_full": 0.608677105697343,
+      "gain": -0.0007573196889489875,
       "subset": "pit",
       "features": [
         "rsi14",
@@ -195,7 +203,11 @@
         "pit_roe",
         "pit_nde",
         "pit_rev_growth",
-        "pit_earn_growth"
+        "pit_earn_growth",
+        "pit_low_debt",
+        "pit_real_growth",
+        "pit_profitable",
+        "pit_quality"
       ]
     }
   ],

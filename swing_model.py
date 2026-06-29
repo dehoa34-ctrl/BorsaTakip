@@ -56,12 +56,20 @@ def predict_from_df(df, symbol=None):
         try:
             import pit_fundamentals as pf
             sym = (df.attrs.get("symbol") if hasattr(df, "attrs") else None)
-            latest = pf.latest_pit(sym) if sym else {c: None for c in pit_cols}
+            latest = pf.latest_pit(sym) if sym else {}
         except Exception:
-            latest = {c: None for c in pit_cols}
-        for c in pit_cols:
+            latest = {}
+        # Base PIT rasyoları (latest_pit'ten)
+        for c in ("pit_roe", "pit_nde", "pit_rev_growth", "pit_earn_growth"):
             val = latest.get(c)
             feats[c] = np.nan if val is None else float(val)
+        # "Yatırım Şaheseri" kombinasyon feature'larını türet (eğitimle aynı)
+        try:
+            from swing_dataset import add_quality_features
+            feats = add_quality_features(feats)
+        except Exception:
+            for c in ("pit_low_debt", "pit_real_growth", "pit_profitable", "pit_quality"):
+                feats[c] = 0
     # Sadece teknik+hacim sütunları NaN değilse satırı al (PIT NaN olabilir)
     base = [c for c in needed if not c.startswith("pit_")]
     valid = feats[base].dropna()

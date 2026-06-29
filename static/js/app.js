@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
             item.classList.add('active');
             
             if (item.id === 'btn-watchlist') {
-                alert('İzleme Listesi modülü yapım aşamasında.');
+                showPage('watchlist');
             } else if (item.id === 'btn-news') {
                 fetchTickerNews(currentSymbol);
                 newsModal.style.display = 'block';
@@ -345,12 +345,14 @@ function showPage(page) {
     const candles = document.getElementById('section-candles');
     const newsintel = document.getElementById('section-newsintel');
     const scanSec = document.getElementById('section-scan');
+    const watchlistSec = document.getElementById('section-watchlist');
 
     if (dashboard) dashboard.style.display = 'none';
     if (technical) technical.style.display = 'none';
     if (candles) candles.style.display = 'none';
     if (newsintel) newsintel.style.display = 'none';
     if (scanSec) scanSec.style.display = 'none';
+    if (watchlistSec) watchlistSec.style.display = 'none';
 
     const sym = (typeof currentSymbol !== 'undefined') ? currentSymbol : 'THYAO.IS';
 
@@ -366,6 +368,9 @@ function showPage(page) {
     } else if (page === 'scan') {
         if (scanSec) scanSec.style.display = '';
         if (typeof initScanTab === 'function') initScanTab();
+    } else if (page === 'watchlist') {
+        if (watchlistSec) watchlistSec.style.display = '';
+        if (typeof loadWatchlistPage === 'function') loadWatchlistPage();
     } else {
         if (dashboard) dashboard.style.display = '';
     }

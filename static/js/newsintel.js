@@ -180,7 +180,7 @@ async function loadScanner() {
 function scanCol(title, items, color) {
     const rows = items.length
         ? items.map(i => `
-            <div class="scan-row">
+            <div class="scan-row" style="cursor: pointer;" onclick="loadTickerFromNewsIntel('${i.symbol}')">
                 <span class="scan-sym">${i.symbol}</span>
                 <span class="tag ${niSentClass(i.sentiment)}">${i.sentiment}</span>
                 <span class="scan-cat">${i.category}</span>
@@ -218,4 +218,22 @@ function renderScanner(data) {
             ${scanCol('🔴 Negatif Akış', data.negatif, '#ef4444')}
         </div>
     `;
+}
+
+/**
+ * Haber Akışından (Scalp) hisseye tıklandığında Dashboard grafiğini yükler.
+ */
+function loadTickerFromNewsIntel(symbol) {
+    let fullSym = symbol.toUpperCase().trim();
+    if (!fullSym.endsWith('.IS') && fullSym.length <= 5) {
+        fullSym = fullSym + '.IS';
+    }
+    const searchInput = document.getElementById('symbol-search');
+    if (searchInput) {
+        searchInput.value = fullSym;
+    }
+    showPage('dashboard');
+    if (typeof fetchTickerData === 'function') {
+        fetchTickerData(fullSym, '1y', '1d');
+    }
 }

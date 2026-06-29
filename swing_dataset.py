@@ -116,8 +116,27 @@ FLOW_FEATURES = ["mfi", "cmf", "obv_slope10", "px_vs_vwap", "price_slope14",
                  "mfi_slope14", "bull_div", "bear_div", "near_support", "near_resist"]
 FEATURES = PRICE_ONLY + FLOW_FEATURES                 # teknik + hacim
 PIT_FEATURES = pf.PIT_FEATURES                         # point-in-time temel
-FEATURES_FUND = FEATURES + PIT_FEATURES                # + temel
+# "Yatırım Şaheseri" bileşenleri (PIT'ten türetilmiş, sızıntısız):
+#   [Düşük Borç] + [Enflasyon Üzeri Esas Faaliyet Büyümesi] + [Nakit Üreten Kârlılık]
+QUALITY_FEATURES = ["pit_low_debt", "pit_real_growth", "pit_profitable", "pit_quality"]
+FEATURES_FUND = FEATURES + PIT_FEATURES + QUALITY_FEATURES   # + temel + kombinasyon
 TARGETS = ["y_dir", "y_big", "y_up", "y_beartrap"]
+
+INFLATION_PROXY = 35.0   # TR yüksek enflasyon — bunun üzeri ciro büyümesi "reel büyüme" sayılır
+DEBT_OK = 2.5            # Net Borç/FAVÖK bu altı = düşük borçlu
+ROE_OK = 15.0           # ROE bu üstü = nakit üreten kârlılık
+
+
+def add_quality_features(df):
+    """PIT rasyolarından 'Yatırım Şaheseri' kombinasyon feature'larını üret (NaN→0)."""
+    nde = df.get("pit_nde")
+    rev = df.get("pit_rev_growth")
+    roe = df.get("pit_roe")
+    df["pit_low_debt"] = ((nde.notna()) & (nde < DEBT_OK)).astype(int) if nde is not None else 0
+    df["pit_real_growth"] = ((rev.notna()) & (rev > INFLATION_PROXY)).astype(int) if rev is not None else 0
+    df["pit_profitable"] = ((roe.notna()) & (roe > ROE_OK)).astype(int) if roe is not None else 0
+    df["pit_quality"] = df["pit_low_debt"] + df["pit_real_growth"] + df["pit_profitable"]  # 0-3
+    return df
 
 
 def _winsor_pit(df):
@@ -150,6 +169,7 @@ def build_dataset(verbose=True, with_pit=True):
     data = pd.concat(frames, ignore_index=True)
     if with_pit:
         data = _winsor_pit(data)
+        data = add_quality_features(data)   # Yatırım Şaheseri kombinasyonu
     data = data.dropna(subset=FEATURES + ["fwd"]).reset_index(drop=True)
     data = data.sort_values("date").reset_index(drop=True)
     if verbose:

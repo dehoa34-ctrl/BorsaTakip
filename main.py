@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 import asyncio
 import time
-import yfinance as yf
+import data_fetcher as yf
 import pandas as pd
 import uvicorn
 import os
@@ -23,6 +23,7 @@ from candles import scan_candles
 from flow import analyze_flow
 from news_engine import classify_item, analyze_category_reaction
 import sources
+import screener
 import scanner as scan_mod
 from fastapi.responses import PlainTextResponse
 
@@ -287,13 +288,57 @@ def get_scanner(limit: int = 80):
 
 
 @app.get("/api/scan")
-def run_scan(ctype: str = "teknik", cval: str = "Güçlü Al", limit: int = 0):
+def run_scan(
+    ctype: str = "teknik",
+    cval: str = "Güçlü Al",
+    limit: int = 0,
+    vol_limit_toggle: bool = False,
+    vol_limit_val: float = 500000000.0,
+    fdo_toggle: bool = False,
+    fdo_min: float = 15.0,
+    fdo_max: float = 55.0,
+    roe_toggle: bool = False,
+    roe_min: float = 5.0,
+    roe_max: float = 75.0,
+    indicators_toggle: bool = False,
+    mfi_period: int = 14,
+    obv_trend: int = 10,
+    min_prob_toggle: bool = False,
+    min_prob: float = 30.0,
+    karanlik_oda_toggle: bool = False,
+    karanlik_oda_val: float = 15.0,
+    vol_z_toggle: bool = False,
+    vol_z_val: float = 2.5,
+    silkeleme_toggle: bool = False,
+    silkeleme_val: float = 30.0
+):
     """
     BIST evrenini kritere göre tara. ctype: teknik|olasilik|rsi|mum.
     limit=0 → tüm evren (~550, biraz sürer). Sonuç dışa aktarılabilir.
     """
     lim = limit if limit > 0 else None
-    res = scan_mod.scan_universe(ctype, cval, limit=lim)
+    filters = {
+        "vol_limit_toggle": vol_limit_toggle,
+        "vol_limit_val": vol_limit_val,
+        "fdo_toggle": fdo_toggle,
+        "fdo_min": fdo_min,
+        "fdo_max": fdo_max,
+        "roe_toggle": roe_toggle,
+        "roe_min": roe_min,
+        "roe_max": roe_max,
+        "indicators_toggle": indicators_toggle,
+        "mfi_period": mfi_period,
+        "obv_trend": obv_trend,
+        "min_prob_toggle": min_prob_toggle,
+        "min_prob": min_prob,
+        "karanlik_oda_toggle": karanlik_oda_toggle,
+        "karanlik_oda_val": karanlik_oda_val,
+        "vol_z_toggle": vol_z_toggle,
+        "vol_z_val": vol_z_val,
+        "silkeleme_toggle": silkeleme_toggle,
+        "silkeleme_val": silkeleme_val
+    }
+    res = scan_mod.scan_universe(ctype, cval, limit=lim, filters=filters)
     res["universe_total"] = len(sources.BIST_CORE)
     return res
 
@@ -311,11 +356,28 @@ def export_scan(ctype: str = "teknik", cval: str = "Güçlü Al", limit: int = 0
         lim = limit if limit > 0 else None
         res = scan_mod.scan_universe(ctype, cval, limit=lim)
         syms = [m["symbol"] for m in res["matches"]]
-    txt = sources.to_ideal_format(syms, prefix=cval)
+    txt = sources.to_ideal_format(syms, prefix=None)
     fname = f"tarama_{ctype}_{int(time.time())}.txt"
     return PlainTextResponse(content=txt, headers={
         "Content-Disposition": f'attachment; filename="{fname}"'
     })
+
+
+@app.get("/api/screener/data")
+def get_screener_data_ep():
+    try:
+        return screener.get_screener_data()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/screener/refresh")
+def refresh_screener_ep():
+    try:
+        screener.update_screener_cache()
+        return {"ok": True, "message": "Güncelleme arka planda başlatıldı."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/fundamentals/{symbol}")
@@ -418,7 +480,7 @@ def get_index():
     with open("static/index.html", "r", encoding="utf-8") as f:
         html_content = f.read()
     ts = int(time.time())
-    for js in ["app.js", "technical.js", "candles.js", "newsintel.js", "scan.js"]:
+    for js in ["app.js", "technical.js", "candles.js", "newsintel.js", "scan.js", "watchlist_page.js"]:
         html_content = html_content.replace(f'src="js/{js}"', f'src="js/{js}?v={ts}"')
     html_content = html_content.replace('href="css/styles.css"', f'href="css/styles.css?v={ts}"')
     return HTMLResponse(content=html_content, headers={

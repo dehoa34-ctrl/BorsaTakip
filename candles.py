@@ -14,6 +14,138 @@ gibi değil; fiyatın kendi davranışından (price action) çıkan desenlerdir.
 import numpy as np
 import pandas as pd
 
+import flow as _flow
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  DOĞRULAMA (Validation) — formasyonu "kandırılması zor" hale getiren filtreler
+#  1) Hacim: formasyon günü hacmi 10-gün ortalamasının >=1.5 katı olmalı (Z-score)
+#  2) Trend/Konum: boğa dönüşü ancak ÖNCE düşüş varsa geçerli (zirvede yutan = dağıtım)
+#  3) POC: çekiç türlerinde fitil POC altından likidite alıp döndüyse GERÇEK ayı tuzağı
+# ─────────────────────────────────────────────────────────────────────────────
+def _get_karanlik_oda_ratio_live(symbol):
+    """BIST hisseleri için bugünkü karanlık oda hacim oranını sorgular."""
+    if not symbol:
+        return None
+    try:
+        import data_fetcher
+        sym = symbol if symbol.endswith(".IS") else symbol + ".IS"
+        t = data_fetcher.Ticker(sym)
+        df_5m = t.history(period="1d", interval="5m")
+        if df_5m is not None and not df_5m.empty:
+            # 17:50 - 18:05 arası barlar (BIST kapanış seansı)
+            closing_vol = df_5m[
+                ((df_5m.index.hour == 17) & (df_5m.index.minute >= 50)) | (df_5m.index.hour == 18)
+            ]["Volume"].sum()
+            total_vol = df_5m["Volume"].sum()
+            return float((closing_vol / total_vol) * 100) if total_vol > 0 else 0.0
+    except Exception:
+        pass
+    return None
+
+
+def _validate(df, i, ptype, name=None, karanlik_oda_ratio=None):
+    vol = df["Volume"]
+    close = df["Close"]
+    low = df["Low"]
+    high = df["High"]
+
+    # 1) Hacim doğrulama (Z-Score > 1.5 ve ortalama ratio >= 1.5)
+    win = vol.iloc[max(0, i - 10):i]
+    v_mean = float(win.mean()) if len(win) else 0.0
+    v_std = float(win.std()) if len(win) > 1 else 0.0
+    v_today = float(vol.iloc[i])
+    vol_ratio = (v_today / v_mean) if v_mean else 0.0
+    vol_z = ((v_today - v_mean) / v_std) if v_std else 0.0
+    volume_ok = vol_ratio >= 1.5 and vol_z > 1.5
+
+    # 2) Trend / konum doğrulama (son 5 ve 10 mum yönü)
+    trend_ok = True
+    trend_label = "Uyumlu"
+    if ptype == BULL:
+        # Boğa dönüşü öncesinde düşüş trendi olmalı (en az birinde negatif getiri)
+        j5 = max(0, i - 5)
+        base5 = float(close.iloc[j5])
+        prior_ret5 = (float(close.iloc[i-1]) / base5 - 1) * 100 if base5 and i > j5 else 0.0
+        
+        j10 = max(0, i - 10)
+        base10 = float(close.iloc[j10])
+        prior_ret10 = (float(close.iloc[i-1]) / base10 - 1) * 100 if base10 and i > j10 else 0.0
+        
+        trend_ok = (prior_ret5 < -1.5) or (prior_ret10 < -1.5)
+        if not trend_ok:
+            if prior_ret5 > 1.5 or prior_ret10 > 1.5:
+                trend_label = "Dağıtım / Mal Boşaltma Riski (Zirvede Formasyon)"
+            else:
+                trend_label = "Yatay Piyasa (Sahte Sinyal Riski)"
+    elif ptype == BEAR:
+        # Ayı dönüşü öncesinde yükseliş trendi olmalı
+        j5 = max(0, i - 5)
+        base5 = float(close.iloc[j5])
+        prior_ret5 = (float(close.iloc[i-1]) / base5 - 1) * 100 if base5 and i > j5 else 0.0
+        
+        j10 = max(0, i - 10)
+        base10 = float(close.iloc[j10])
+        prior_ret10 = (float(close.iloc[i-1]) / base10 - 1) * 100 if base10 and i > j10 else 0.0
+        
+        trend_ok = (prior_ret5 > 1.5) or (prior_ret10 > 1.5)
+        if not trend_ok:
+            trend_label = "Dip Seviyede Ayı Formasyonu (Sahte)"
+
+    # 3) POC (Hacim Yoğunluğu) — çekiç ve ters çekiç türleri için
+    poc_signal = None
+    is_hammer = name and any(x in name.lower() for x in ["çekiç", "hammer", "inverted"])
+    if is_hammer and i >= 25:
+        try:
+            poc, _, _ = _flow.volume_profile_poc(df.iloc[:i + 1])
+        except Exception:
+            poc = None
+        if poc:
+            lo = float(low.iloc[i])
+            cl = float(close.iloc[i])
+            if lo < poc and cl > poc:
+                poc_signal = "Gerçek Ayı Tuzağı (POC altından likidite alıp döndü)"
+            elif cl < poc * 0.98:
+                poc_signal = "POC altında — sahte tepki yükselişi (düşüş trendi devam edebilir)"
+
+    # Skor + karar
+    score = 0
+    # Hacimsiz mumlar çöp hükmündedir (Volume validation cezası/ödülü)
+    score += 40 if volume_ok else -30
+    score += 30 if trend_ok else -35
+    
+    if poc_signal:
+        if "Gerçek" in poc_signal:
+            score += 25
+        else:
+            score -= 25
+            
+    # Karanlık oda bonusu (Kesin Ayı Tuzağı - Toplama)
+    karanlik_oda_signal = None
+    if karanlik_oda_ratio is not None and karanlik_oda_ratio > 15.0:
+        if ptype == BULL:
+            score += 25
+            karanlik_oda_signal = f"Kesin Ayı Tuzağı (Karanlık Odada %{karanlik_oda_ratio:.1f} Toplama)"
+
+    if score >= 60:
+        verdict = "Doğrulandı (Güçlü)"
+    elif score >= 20:
+        verdict = "Kısmi Doğrulama"
+    else:
+        verdict = "Zayıf / Şüpheli (Sahte Sinyal)"
+
+    # prior_ret olarak son 5 günlük getiri bilgisini dönüyoruz
+    j_ret = max(0, i - 5)
+    p_ret = (float(close.iloc[i-1]) / float(close.iloc[j_ret]) - 1) * 100 if i > j_ret else 0.0
+
+    return {
+        "verdict": verdict, "score": score,
+        "volume_ok": volume_ok, "vol_ratio": round(vol_ratio, 2), "vol_z": round(vol_z, 2),
+        "trend_ok": trend_ok, "trend_label": trend_label, "prior_ret5": round(p_ret, 2),
+        "poc_signal": poc_signal, "karanlik_oda_ratio": round(karanlik_oda_ratio, 2) if karanlik_oda_ratio else None,
+        "karanlik_oda_signal": karanlik_oda_signal
+    }
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Formasyon kütüphanesi — açıklama + güvenilirlik (candlesticker.com mantığı)
@@ -175,17 +307,21 @@ def _detect_at(df, i):
     return uniq
 
 
-def _enrich(names, date_str):
+def _enrich(names, date_str, df=None, i=None, karanlik_oda_ratio=None):
     out = []
     for n in names:
         info = PATTERN_INFO.get(n, (NEUT, "Orta", ""))
-        out.append({
+        item = {
             "name": n,
             "type": info[0],      # Boğa / Ayı / Kararsız
             "reliability": info[1],
             "desc": info[2],
             "date": date_str,
-        })
+        }
+        # DOĞRULAMA: hacim + trend/konum + POC (kandırılması zor)
+        if df is not None and i is not None:
+            item["validation"] = _validate(df, i, info[0], n, karanlik_oda_ratio)
+        out.append(item)
     return out
 
 
@@ -206,18 +342,26 @@ def scan_candles(df, symbol="", timeframe="1d", lookback=40):
     n = len(df)
     last_i = n - 1
 
-    latest = _enrich(_detect_at(df, last_i), _date_str(df.index[last_i], timeframe))
+    # Son mumda karanlık oda hacim oranını hesapla (sadece BIST günlük analizde)
+    k_ratio = None
+    if timeframe == "1d" and symbol:
+        k_ratio = _get_karanlik_oda_ratio_live(symbol)
+
+    latest = _enrich(_detect_at(df, last_i), _date_str(df.index[last_i], timeframe), df, last_i, k_ratio)
 
     history = []
     start = max(2, n - lookback)
     for i in range(n - 1, start - 1, -1):
         names = _detect_at(df, i)
         if names:
-            history.extend(_enrich(names, _date_str(df.index[i], timeframe)))
+            # Geçmiş mumlarda karanlık oda bilgisini doğrudan hesaplayamayız (canlı olmadıkları için), bu yüzden None geçiyoruz.
+            history.extend(_enrich(names, _date_str(df.index[i], timeframe), df, i, None))
 
     bullish = sum(1 for h in history if h["type"] == BULL)
     bearish = sum(1 for h in history if h["type"] == BEAR)
     neutral = sum(1 for h in history if h["type"] == NEUT)
+    # Doğrulanmış (hacim+trend+POC) formasyon sayısı — asıl güvenilir olanlar
+    validated = sum(1 for h in history if h.get("validation", {}).get("score", 0) >= 50)
     if bullish > bearish:
         bias = BULL
     elif bearish > bullish:
@@ -232,5 +376,6 @@ def scan_candles(df, symbol="", timeframe="1d", lookback=40):
         "price": round(float(df["Close"].iloc[-1]), 4),
         "latest": latest,
         "history": history,
-        "summary": {"bullish": bullish, "bearish": bearish, "neutral": neutral, "bias": bias},
+        "summary": {"bullish": bullish, "bearish": bearish, "neutral": neutral,
+                    "bias": bias, "validated": validated},
     }

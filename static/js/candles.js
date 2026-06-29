@@ -57,8 +57,28 @@ async function loadCandles(symbol) {
     }
 }
 
+function valBadge(v) {
+    if (!v) return '';
+    const strong = v.score >= 50, weak = v.score < 20;
+    const c = strong ? '#22c55e' : (weak ? '#ef4444' : '#f59e0b');
+    const icon = strong ? '✅' : (weak ? '⚠️' : '◐');
+    return `<span class="val-badge" style="background:${c}1a;color:${c};border:1px solid ${c}55">${icon} ${v.verdict}</span>`;
+}
+
+function valDetail(v) {
+    if (!v) return '';
+    const volC = v.volume_ok ? '#22c55e' : '#ef4444';
+    let html = `<div class="pc-val">
+        <span style="color:${volC}">Hacim ×${v.vol_ratio} ${v.volume_ok ? '✓ (≥1.5)' : '✗ (zayıf)'}</span>
+        <span style="color:${v.trend_ok ? '#22c55e' : '#ef4444'}">Konum ${v.trend_ok ? '✓' : '✗'} (5g %${v.prior_ret5})</span>`;
+    if (v.poc_signal) html += `<span class="pc-poc">📊 ${v.poc_signal}</span>`;
+    html += `</div>`;
+    return html;
+}
+
 function patternCard(p, big) {
     const color = CND_COLORS[p.type] || '#94a3b8';
+    const v = p.validation;
     return `
     <div class="pattern-card glass-card ${big ? 'big' : ''}" style="border-left:4px solid ${color}">
         <div class="pc-head">
@@ -67,8 +87,9 @@ function patternCard(p, big) {
         </div>
         <div class="pc-meta">
             <span class="pc-date">${p.date}</span>
-            <span class="pc-rel">Güvenilirlik: ${p.reliability}</span>
+            ${valBadge(v)}
         </div>
+        ${valDetail(v)}
         <p class="pc-desc">${p.desc}</p>
     </div>`;
 }
@@ -97,7 +118,8 @@ function renderCandles(data) {
             <div class="cs-item"><span class="cs-num" style="color:#22c55e">${s.bullish}</span><span>Boğa</span></div>
             <div class="cs-item"><span class="cs-num" style="color:#ef4444">${s.bearish}</span><span>Ayı</span></div>
             <div class="cs-item"><span class="cs-num" style="color:#94a3b8">${s.neutral}</span><span>Kararsız</span></div>
-            <div class="cs-note">Son dönemdeki formasyon dağılımı. Bunlar tek başına emir değil; teyit için trend ve hacimle birlikte değerlendirin.</div>
+            <div class="cs-item"><span class="cs-num" style="color:#3b82f6">${s.validated ?? 0}</span><span>✅ Doğrulanmış</span></div>
+            <div class="cs-note"><b>Doğrulama:</b> formasyonlar hacim (≥1.5× ort.), trend/konum ve POC ile süzülür. Hacimsiz formasyonlar "Zayıf/Şüpheli" işaretlenir — robot tuzaklarını ayıklamak için. Sadece <b>✅ Doğrulandı</b> olanlar güvenilirdir.</div>
         </div>
 
         <h3 class="cnd-section-title">🔥 Son Mumdaki Formasyon</h3>

@@ -22,6 +22,9 @@ ENV/
 *.sqlite
 *.flag
 *.log
+screener_cache.json
+kap_result*.json
+kap_out*.txt
 
 # Node.js
 node_modules/
