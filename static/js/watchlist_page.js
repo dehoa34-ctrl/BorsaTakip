@@ -417,16 +417,15 @@ function selectStockForFundamental(symbol) {
  * Tablodan bir sembole tıklandığında, onu dashboard grafiğine yükler.
  */
 function loadTickerFromScreener(symbol) {
-    let fullSym = symbol;
-    if (sources && sources.BIST_CORE && sources.BIST_CORE.includes(symbol)) {
-        fullSym = symbol + '.IS';
-    } else if (!symbol.endsWith('.IS') && symbol.length <= 5) {
-        fullSym = symbol + '.IS';
-    }
-    
-    document.getElementById('symbol-search').value = fullSym;
+    // Temel Analiz BIST hisseleri içindir → .IS ekle (yoksa).
+    // ('sources' bir Python modülü; frontend'de yok — referans verme!)
+    const fullSym = symbol.endsWith('.IS') ? symbol : symbol + '.IS';
+
+    const inp = document.getElementById('symbol-search');
+    if (inp) inp.value = fullSym;
+    if (typeof currentSymbol !== 'undefined') currentSymbol = fullSym;
     showPage('dashboard');
-    fetchTickerData(fullSym, '1y', '1d');
+    if (typeof fetchTickerData === 'function') fetchTickerData(fullSym, '1y', '1d');
 }
 
 /**
