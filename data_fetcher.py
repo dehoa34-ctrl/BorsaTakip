@@ -12,6 +12,8 @@ import httpx
 import urllib.request
 import json
 import time
+import os
+import pickle
 
 logger = logging.getLogger(__name__)
 
@@ -21,40 +23,186 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.5"
 }
 
+# Pre-load 5-year BIST price cache once on import
+_PRICE_CACHE_5Y = {}
+try:
+    _dir_path = os.path.dirname(os.path.abspath(__file__))
+    _cache_path = os.path.join(_dir_path, "price_cache_5y.pkl")
+    if os.path.exists(_cache_path):
+        with open(_cache_path, "rb") as _f:
+            _PRICE_CACHE_5Y = pickle.load(_f)
+        logger.info(f"Loaded {len(_PRICE_CACHE_5Y)} cached BIST tickers from price_cache_5y.pkl")
+    else:
+        logger.warning(f"price_cache_5y.pkl not found at {_cache_path}")
+except Exception as _e:
+    logger.warning(f"Failed to load price_cache_5y.pkl: {_e}")
+
+def _cache_is_fresh(max_age_days=1):
+    """Örnek bir sembole bakarak önbelleğin ne kadar güncel olduğunu kontrol eder."""
+    if not _PRICE_CACHE_5Y:
+        return False
+    try:
+        sample = next(iter(_PRICE_CACHE_5Y.values()))
+        if sample is None or sample.empty:
+            return False
+        last_date = sample.index[-1]
+        if getattr(last_date, "tzinfo", None) is not None:
+            last_date = last_date.tz_localize(None)
+        age_days = (pd.Timestamp.now().normalize() - last_date.normalize()).days
+        return age_days <= max_age_days
+    except Exception:
+        return False
+
+
+def initialize_cache(force=False):
+    """
+    BIST tickers verilerini toplu halde yf.download ile indirip diske kaydeder.
+    force=False iken: önbellek DOLU ve GÜNCEL (≤1 gün) ise atlanır.
+    force=True (periyodik yenileme) iken: her zaman yeniden indirir — böylece
+    uzun süre çalışan sunucularda 'ultimate fallback' asla haftalarca bayat kalmaz.
+    """
+    global _PRICE_CACHE_5Y
+    cache_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "price_cache_5y.pkl")
+
+    if not force and len(_PRICE_CACHE_5Y) > 50 and _cache_is_fresh():
+        return
+
+    logger.info("BIST önbelleği boş/eksik/bayat. Toplu indirme (batch download) başlatılıyor...")
+    
+    try:
+        import sources
+        # Tüm BIST sembollerini hazırla
+        symbols = [s + ".IS" for s in sources.BIST_CORE]
+        
+        # 50'şerli gruplara böl (Yahoo rate limit yememek için en güvenli ve hızlı yol)
+        batch_size = 50
+        batches = [symbols[i:i + batch_size] for i in range(0, len(symbols), batch_size)]
+        
+        new_cache = {}
+        for idx, batch in enumerate(batches):
+            logger.info(f"BIST veri paketi indiriliyor ({idx+1}/{len(batches)})...")
+            try:
+                # Toplu indir (6 aylık veri teknik analiz için yeterlidir)
+                df = yf.download(batch, period="6mo", interval="1d", progress=False)
+                if df is not None and not df.empty:
+                    for sym in batch:
+                        clean_sym = sym.replace(".IS", "")
+                        # Ticker'ın sütunları mevcut mu kontrol et
+                        if "Close" in df and sym in df["Close"].columns:
+                            try:
+                                # Tekil DataFrame oluştur
+                                ticker_df = pd.DataFrame({
+                                    "Open": df["Open"][sym],
+                                    "High": df["High"][sym],
+                                    "Low": df["Low"][sym],
+                                    "Close": df["Close"][sym],
+                                    "Volume": df["Volume"][sym]
+                                })
+                                # Sadece Close değeri dolu olan satırları tut
+                                ticker_df = ticker_df.dropna(subset=["Close"])
+                                if not ticker_df.empty:
+                                    new_cache[clean_sym] = ticker_df
+                            except Exception as parse_e:
+                                logger.debug(f"Failed to parse batch data for {sym}: {parse_e}")
+            except Exception as batch_e:
+                logger.warning(f"Batch {idx+1} download failed: {batch_e}")
+                
+        if new_cache:
+            _PRICE_CACHE_5Y.update(new_cache)
+            with open(cache_path, "wb") as f:
+                pickle.dump(_PRICE_CACHE_5Y, f)
+            logger.info(f"BIST önbelleği başarıyla oluşturuldu ve diske kaydedildi. Toplam {len(_PRICE_CACHE_5Y)} hisse.")
+        else:
+            logger.warning("Toplu indirme başarısız oldu veya hiçbir veri çekilemedi.")
+    except Exception as e:
+        logger.error(f"Önbellek ilklendirme hatası: {e}")
+
+# Arka planda çalıştır (sunucu açılışını bloklamaz) + periyodik yenile.
+# Not: eskiden bu önbellek YALNIZCA boşken bir kez dolduruluyordu ve sonra
+# process ömrü boyunca hiç yenilenmiyordu — uzun süre açık kalan bir sunucuda
+# 'ultimate fallback' haftalarca bayat kalabiliyordu (yanlış/eski fiyat riski).
+def _cache_refresh_loop():
+    import threading
+    initialize_cache()  # açılışta bir kez (boş/bayatsa doldurur)
+    while True:
+        time.sleep(12 * 3600)  # 12 saatte bir tazele
+        try:
+            initialize_cache(force=True)
+        except Exception as e:
+            logger.warning(f"Periyodik önbellek yenileme hatası: {e}")
+
+def _async_init_cache():
+    import threading
+    threading.Thread(target=_cache_refresh_loop, daemon=True).start()
+
+_async_init_cache()
+
+_yahoo_blocked_until = 0.0
+
+def is_yahoo_blocked() -> bool:
+    global _yahoo_blocked_until
+    return time.time() < _yahoo_blocked_until
+
+def mark_yahoo_blocked():
+    global _yahoo_blocked_until
+    # Block live requests for the next 5 minutes
+    _yahoo_blocked_until = time.time() + 300.0
+    logger.warning("Yahoo Finance rate limit or block detected. Disabling live requests for 5 minutes and using cache fallback.")
+
 def get_yahoo_cookie_and_crumb():
     """Yahoo Finance quoteSummary API'si için gereken çerez (cookie) ve kırıntı (crumb) değerlerini çeker."""
+    if is_yahoo_blocked():
+        return None, None
     try:
         # 1. Cookie almak için fc.yahoo.com'a git
         resp = httpx.get("https://fc.yahoo.com", headers=HEADERS, follow_redirects=True, timeout=5)
+        if resp.status_code == 429:
+            mark_yahoo_blocked()
+            return None, None
         cookies = resp.cookies
         
         # 2. Crumb almak için getcrumb API'sini sorgula
         crumb_resp = httpx.get("https://query1.finance.yahoo.com/v1/test/getcrumb", headers=HEADERS, cookies=cookies, timeout=5)
+        if crumb_resp.status_code == 429:
+            mark_yahoo_blocked()
+            return None, None
         crumb = crumb_resp.text.strip()
         return cookies, crumb
     except Exception as e:
-        logger.warning(f"Failed to fetch Yahoo cookie/crumb: {e}")
+        logger.debug(f"Failed to fetch Yahoo cookie/crumb: {e}")
+        if "429" in str(e) or "too many requests" in str(e).lower():
+            mark_yahoo_blocked()
         return None, None
 
 def fetch_history_http(symbol: str, period: str = "6mo", interval: str = "1d") -> pd.DataFrame:
     """Doğrudan Yahoo Finance Chart API'sini sorgulayarak tarihçe verisi çeker (yfinance yedeği)."""
+    if is_yahoo_blocked():
+        return pd.DataFrame()
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
     params = {"range": period, "interval": interval}
     
     try:
         with httpx.Client(headers=HEADERS, timeout=15.0) as client:
             resp = client.get(url, params=params)
+            if resp.status_code == 429:
+                mark_yahoo_blocked()
+                return pd.DataFrame()
             resp.raise_for_status()
             data = resp.json()
     except Exception as e:
-        logger.warning(f"HTTPX history fetch failed: {e}. Trying urllib...")
+        logger.debug(f"HTTPX history fetch failed: {e}. Trying urllib...")
+        if "429" in str(e) or "too many requests" in str(e).lower():
+            mark_yahoo_blocked()
+            return pd.DataFrame()
         try:
             full_url = f"{url}?range={period}&interval={interval}"
             req = urllib.request.Request(full_url, headers=HEADERS)
             with urllib.request.urlopen(req, timeout=15) as response:
                 data = json.loads(response.read().decode('utf-8'))
         except Exception as ex:
-            logger.error(f"Urllib history fetch failed: {ex}")
+            logger.debug(f"Urllib history fetch failed: {ex}")
+            if "429" in str(ex) or "too many requests" in str(ex).lower():
+                mark_yahoo_blocked()
             return pd.DataFrame()
 
     try:
@@ -88,11 +236,13 @@ def fetch_history_http(symbol: str, period: str = "6mo", interval: str = "1d") -
         df = df.dropna(subset=["Close"])
         return df
     except Exception as parse_err:
-        logger.error(f"Failed to parse Yahoo chart JSON: {parse_err}")
+        logger.debug(f"Failed to parse Yahoo chart JSON: {parse_err}")
         return pd.DataFrame()
 
 def fetch_info_http(symbol: str) -> dict:
     """Doğrudan Yahoo Finance quoteSummary API'sini sorgulayarak hisse bilgilerini çeker (yfinance.Ticker.info yedeği)."""
+    if is_yahoo_blocked():
+        return {}
     # Cookie ve crumb al
     cookies, crumb = get_yahoo_cookie_and_crumb()
     
@@ -105,10 +255,15 @@ def fetch_info_http(symbol: str) -> dict:
     try:
         with httpx.Client(headers=HEADERS, cookies=cookies, timeout=15.0) as client:
             resp = client.get(url, params=params)
+            if resp.status_code == 429:
+                mark_yahoo_blocked()
+                return {}
             resp.raise_for_status()
             data = resp.json()
     except Exception as e:
-        logger.warning(f"HTTPX info fetch failed: {e}. Attempting direct HTTP fallback...")
+        logger.debug(f"HTTPX info fetch failed: {e}. Attempting direct HTTP fallback...")
+        if "429" in str(e) or "too many requests" in str(e).lower():
+            mark_yahoo_blocked()
         return {}
 
     try:
@@ -139,7 +294,7 @@ def fetch_info_http(symbol: str) -> dict:
         }
         return info
     except Exception as parse_err:
-        logger.error(f"Failed to parse quoteSummary JSON for {symbol}: {parse_err}")
+        logger.debug(f"Failed to parse quoteSummary JSON for {symbol}: {parse_err}")
         return {}
 
 # ── Ana API Sarmalayıcı Sınıf ──
@@ -166,7 +321,49 @@ class Ticker:
         except Exception as e:
             logger.warning(f"yfinance.Ticker.history failed for {self.symbol}: {e}, falling back to HTTP API...")
             
-        return fetch_history_http(self.symbol, period, interval)
+        df_fallback = fetch_history_http(self.symbol, period, interval)
+        if df_fallback is not None and not df_fallback.empty:
+            return df_fallback
+
+        # Ultimate fallback: local cache C:\Users\canbi\OneDrive\Masaüstü\projeler\BorsaTakip\price_cache_5y.pkl
+        # ÖNEMLİ: bu önbellek yalnızca process başlarken BİR KEZ diskten okunur ve
+        # kendini asla otomatik yenilemez. Uzun süre çalışan bir sunucuda günler/haftalar
+        # eskiyebilir (özellikle bedelsiz sermaye artırımı gibi kurumsal işlemlerden sonra
+        # fiyat ölçeği tamamen değişir). Bu yüzden "güncel fiyat" gibi sunmadan önce
+        # tazelik kontrolü yapılır — çok eskiyse yanlış fiyat göstermek yerine boş dönülür.
+        clean_symbol = self.symbol.replace(".IS", "")
+        if clean_symbol in _PRICE_CACHE_5Y:
+            cached_df = _PRICE_CACHE_5Y[clean_symbol]
+            if cached_df is not None and not cached_df.empty:
+                df = cached_df.copy()
+                if df.index.tz is not None:
+                    df.index = df.index.tz_localize(None)
+                last_bar_age_days = (pd.Timestamp.now().normalize() - df.index[-1].normalize()).days
+                if last_bar_age_days > 4:
+                    logger.warning(
+                        f"{self.symbol} için yerel önbellek çok bayat "
+                        f"({last_bar_age_days} gün) — YANLIŞ fiyat göstermemek için boş dönülüyor."
+                    )
+                    return pd.DataFrame()
+                logger.info(f"Yahoo Finance failed for {self.symbol}. Falling back to local cache "
+                            f"(son bar {last_bar_age_days} gün önce).")
+                try:
+                    if period == "1mo":
+                        start_date = df.index[-1] - pd.Timedelta(days=30)
+                        df = df[df.index >= start_date]
+                    elif period == "3mo":
+                        start_date = df.index[-1] - pd.Timedelta(days=90)
+                        df = df[df.index >= start_date]
+                    elif period == "6mo":
+                        start_date = df.index[-1] - pd.Timedelta(days=180)
+                        df = df[df.index >= start_date]
+                    elif period == "1y":
+                        start_date = df.index[-1] - pd.Timedelta(days=365)
+                        df = df[df.index >= start_date]
+                except Exception as filter_err:
+                    logger.warning(f"Failed to slice cached df for {self.symbol}: {filter_err}")
+                return df
+        return pd.DataFrame()
 
     @property
     def info(self) -> dict:
@@ -189,7 +386,32 @@ class Ticker:
             logger.warning(f"yfinance.Ticker.info failed for {self.symbol}: {e}, falling back to HTTP API...")
             
         self._info = fetch_info_http(self.symbol)
-        return self._info
+        if self._info and isinstance(self._info, dict) and len(self._info) > 0:
+            return self._info
+
+        # Ultimate fallback: local screener_cache.json
+        try:
+            clean_symbol = self.symbol.replace(".IS", "")
+            import screener
+            screener_data = screener.get_screener_data()
+            if clean_symbol in screener_data:
+                logger.info(f"Yahoo Finance info failed for {self.symbol}. Falling back to screener cache.")
+                sc = screener_data[clean_symbol]
+                self._info = {
+                    "shortName": sc.get("name") or clean_symbol,
+                    "longName": sc.get("name") or clean_symbol,
+                    "marketCap": int(sc.get("market_cap") * 1_000_000_000) if sc.get("market_cap") else None,
+                    "enterpriseValue": int(sc.get("ev") * 1_000_000_000) if sc.get("ev") else None,
+                    "trailingPE": sc.get("pe"),
+                    "priceToBook": sc.get("pb"),
+                    "returnOnEquity": sc.get("roe") / 100.0 if sc.get("roe") else None,
+                    "floatShares": sc.get("floatShares"),
+                    "sharesOutstanding": sc.get("sharesOutstanding"),
+                }
+                return self._info
+        except Exception as cache_err:
+            logger.warning(f"Screener cache fallback failed for {self.symbol}: {cache_err}")
+        return {}
 
     @property
     def news(self) -> list:

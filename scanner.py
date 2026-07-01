@@ -6,6 +6,9 @@ ve İdealgo'ya geri yüklenebilir TXT (IMKBH'SEMBOL) olarak dışa aktar.
 """
 
 import concurrent.futures as cf
+import json
+import os
+import time
 import data_fetcher
 import sources
 import fundamentals as fund
@@ -13,14 +16,81 @@ import flow
 from technical import get_technical_analysis
 from candles import scan_candles
 
+# ── Kısa süreli tarama önbelleği + ölü sembol kayıt defteri ─────────────────
+# Amaç: aynı oturumda arka arkaya yapılan taramalarda (ör. eşik değerini
+# değiştirip yeniden tarama) her seferinde Yahoo'ya tekrar istek atmayı
+# önlemek (429/rate-limit riskini azaltır → "bayat fallback fiyatı" hatasını
+# önler) ve hiç veri vermeyen (delisted/sukuk/varlık kiralama vb.) sembolleri
+# tekrar tekrar sorgulamayı atlamak (tarama hızını korur).
+_HIST_CACHE = {}          # sym -> (fetched_at, df)
+_HIST_TTL = 900           # 15 dk — bir oturum içindeki tekrar taramalar için yeterli
+_DEAD_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dead_symbols.json")
+_DEAD_TTL = 30 * 24 * 3600  # 30 gün sonra tekrar dene (belki listelenmiştir)
+_dead_cache = None
+
+
+def _load_dead():
+    global _dead_cache
+    if _dead_cache is None:
+        try:
+            with open(_DEAD_FILE, "r", encoding="utf-8") as f:
+                _dead_cache = json.load(f)
+        except Exception:
+            _dead_cache = {}
+    return _dead_cache
+
+
+def _save_dead():
+    try:
+        with open(_DEAD_FILE, "w", encoding="utf-8") as f:
+            json.dump(_dead_cache or {}, f)
+    except Exception:
+        pass
+
+
+def _dead_backoff_seconds(fails):
+    """
+    Kademeli bekleme: tek seferlik hata çoğunlukla geçici rate-limit'tir
+    (ör. KOZAL gibi gerçek/büyük bir hisse bile anlık 429 yiyebilir) —
+    bunu 30 gün karantinaya almak yanlış olur. Israrlı (3+) hata olursa
+    gerçekten sembol geçersizdir (delisted/sukuk/VKŞ vb.) ve uzun süre atlanır.
+    """
+    if fails <= 1:
+        return 3600            # 1. hata: 1 saat sonra tekrar dene
+    if fails == 2:
+        return 6 * 3600        # 2. hata: 6 saat sonra tekrar dene
+    return _DEAD_TTL            # 3+ hata: gerçekten ölü kabul et (30 gün)
+
+
 def _fetch(sym):
+    now = time.time()
+
+    # 1) Kısa süreli başarı önbelleği
+    cached = _HIST_CACHE.get(sym)
+    if cached and (now - cached[0]) < _HIST_TTL:
+        return cached[1]
+
+    # 2) Ölü sembol kaydı — tekrar tekrar boşuna ağ isteği atmayı önler
+    dead = _load_dead()
+    d = dead.get(sym)
+    if d and (now - d.get("last_try", 0)) < _dead_backoff_seconds(d.get("fails", 1)):
+        return None
+
     try:
         # data_fetcher üzerinden yedekli tarihçe çeker
         h = data_fetcher.Ticker(sym + ".IS").history(period="6mo", interval="1d")
         if h is None or len(h) < 30:
+            dead[sym] = {"last_try": now, "fails": (d.get("fails", 0) if d else 0) + 1}
+            _save_dead()
             return None
+        _HIST_CACHE[sym] = (now, h)
+        if sym in dead:
+            del dead[sym]   # kendini iyileştir: artık veri veriyor
+            _save_dead()
         return h
     except Exception:
+        dead[sym] = {"last_try": now, "fails": (d.get("fails", 0) if d else 0) + 1}
+        _save_dead()
         return None
 
 def _rsi_of(tech):

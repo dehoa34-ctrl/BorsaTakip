@@ -23,7 +23,8 @@ const SCAN_VALUES = {
         ['asiri_alim', 'Aşırı Alım (RSI ≥ 70)'],
     ],
     olasilik: [
-        ['70', '%70+'], ['80', '%80+'], ['60', '%60+'], ['90', '%90+'],
+        ['30', '%30+'], ['40', '%40+'], ['50', '%50+'], ['60', '%60+'],
+        ['70', '%70+'], ['80', '%80+'], ['90', '%90+'],
     ],
 };
 
@@ -50,7 +51,7 @@ async function runScan() {
     const exportBtn = document.getElementById('scan-export');
     exportBtn.disabled = true;
 
-    const est = limit === 0 ? '~550 hisse (1-2 dk sürebilir)' : `${limit} hisse`;
+    const est = limit === 0 ? '~800 hisse (birkaç dk sürebilir)' : `${limit} hisse`;
     content.innerHTML = `<div class="tech-empty glass-card"><span class="loading-small">Taranıyor: ${est}...</span></div>`;
 
     // Ön filtreleme parametrelerini topla

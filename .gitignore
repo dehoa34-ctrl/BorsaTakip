@@ -25,6 +25,7 @@ ENV/
 screener_cache.json
 kap_result*.json
 kap_out*.txt
+dead_symbols.json
 
 # Node.js
 node_modules/
