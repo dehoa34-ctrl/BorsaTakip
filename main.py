@@ -81,6 +81,8 @@ def get_ticker_info(symbol: str, period: str = "6mo", interval: str = "1d"):
             "fundamentals": f,
             "final_view": final_view
         }
+    except HTTPException:
+        raise   # ör. 404 "Symbol not found" — 500'e sarılmadan olduğu gibi dönsün
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -445,6 +447,8 @@ def get_ticker_history(symbol: str, period: str = "1mo", interval: str = "1d"):
                 "low": round(row["Low"], 2), "close": round(row["Close"], 2)
             })
         return formatted_data
+    except HTTPException:
+        raise   # 404 "Symbol not found" olduğu gibi dönsün, 500'e sarılmasın
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
